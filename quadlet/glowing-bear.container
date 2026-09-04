@@ -1,0 +1,19 @@
+[Unit]
+Description=Glowing Bear WeeChat web client
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/ploos-as/glowing-bear:latest
+ContainerName=glowing-bear
+PublishPort=8080:8080
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+Tmpfs=/tmp:size=16m,mode=1777
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
