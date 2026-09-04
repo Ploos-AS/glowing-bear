@@ -66,6 +66,50 @@ jobs:
           provenance: mode=max
           sbom: true
 
+  relay-qualification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install WeeChat relay qualification dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            weechat-headless \
+            weechat-plugins \
+            python3-pip \
+            netcat-openbsd
+          python3 -m pip install --break-system-packages -r requirements-qualification.txt
+      - name: Configure and start ephemeral WeeChat websocket relay
+        shell: bash
+        env:
+          RELAY_PASSWORD: m02-ci-relay-password
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/weechat"
+          weechat-headless --dir "$RUNNER_TEMP/weechat" \
+            --run-command "/set relay.network.password $RELAY_PASSWORD" \
+            --run-command "/relay add weechat 19001" \
+            --run-command "/save" \
+            --run-command "/quit"
+          weechat-headless --dir "$RUNNER_TEMP/weechat" --daemon
+          for _ in {1..30}; do
+            if nc -z 127.0.0.1 19001; then exit 0; fi
+            sleep 1
+          done
+          echo "WeeChat relay did not open port 19001" >&2
+          exit 1
+      - name: Qualify WeeChat websocket relay protocol
+        env:
+          RELAY_PASSWORD: m02-ci-relay-password
+        run: python3 scripts/qualify_weechat_relay.py --password "$RELAY_PASSWORD"
+      - name: Show WeeChat diagnostics
+        if: always()
+        run: ps aux | grep '[w]eechat' || true
+      - name: Cleanup WeeChat
+        if: always()
+        run: pkill -f weechat-headless || true
+
   runtime-qualification:
     if: github.event_name != 'pull_request'
     needs: build
@@ -119,39 +163,12 @@ jobs:
           revision="$(docker inspect --format '{{index .Config.Labels "io.github.ploos-as.upstream.revision"}}' glowing-bear-smoke)"
           test "$version" = "${UPSTREAM_VERSION}"
           test "$revision" = "${UPSTREAM_REVISION}"
-      - name: Install WeeChat relay qualification dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends weechat-headless python3-pip
-          python3 -m pip install --break-system-packages -r requirements-qualification.txt
-      - name: Start ephemeral WeeChat websocket relay
-        shell: bash
-        env:
-          RELAY_PASSWORD: m02-ci-relay-password
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/weechat"
-          weechat-headless --dir "$RUNNER_TEMP/weechat" --run-command \
-            "/set relay.network.password $RELAY_PASSWORD;/relay add weechat 19001;/save;/quit" || true
-          weechat-headless --dir "$RUNNER_TEMP/weechat" --daemon
-          for _ in {1..30}; do
-            if nc -z 127.0.0.1 19001; then exit 0; fi
-            sleep 1
-          done
-          exit 1
-      - name: Qualify WeeChat websocket relay protocol
-        env:
-          RELAY_PASSWORD: m02-ci-relay-password
-        run: python3 scripts/qualify_weechat_relay.py --password "$RELAY_PASSWORD"
-      - name: Show diagnostics
+      - name: Show container diagnostics
         if: always()
         run: |
           docker ps -a --filter name=glowing-bear-smoke
           docker inspect glowing-bear-smoke || true
           docker logs glowing-bear-smoke || true
-          ps aux | grep '[w]eechat' || true
-      - name: Cleanup
+      - name: Remove smoke container
         if: always()
-        run: |
-          docker rm -f glowing-bear-smoke || true
-          pkill -f weechat-headless || true
+        run: docker rm -f glowing-bear-smoke || true

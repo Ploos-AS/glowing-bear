@@ -9,7 +9,9 @@ import websockets
 
 
 async def qualify(url: str, password: str) -> None:
-    async with websockets.connect(url, open_timeout=10, close_timeout=5) as ws:
+    ws = await websockets.connect(url, open_timeout=10, close_timeout=1)
+    qualified = False
+    try:
         await ws.send("(handshake) handshake password_hash_algo=plain,compression=off\n")
         handshake = await asyncio.wait_for(ws.recv(), timeout=10)
         if not isinstance(handshake, bytes):
@@ -17,7 +19,9 @@ async def qualify(url: str, password: str) -> None:
         if b"handshake" not in handshake or b"plain" not in handshake:
             raise RuntimeError("WeeChat handshake response did not negotiate plain authentication")
 
-        await ws.send(f"(init) init password=plain:{password}\n")
+        # Classic WeeChat relay protocol expects the raw password value here.
+        # The `plain:<password>` form belongs to the newer Relay HTTP API.
+        await ws.send(f"(init) init password={password}\n")
         await ws.send("(version) info version\n")
         version = await asyncio.wait_for(ws.recv(), timeout=10)
         if not isinstance(version, bytes):
@@ -25,7 +29,21 @@ async def qualify(url: str, password: str) -> None:
         if b"version" not in version:
             raise RuntimeError("WeeChat relay did not return the requested version info")
 
-        await ws.send("quit\n")
+        qualified = True
+    finally:
+        if qualified:
+            # WeeChat 4.1.x may not complete the RFC 6455 close handshake.
+            # Once handshake/auth/version are proven, terminate the transport
+            # directly so that this server shutdown quirk can't turn a valid
+            # qualification into a false negative.
+            ws.transport.abort()
+        else:
+            # Preserve normal close behavior when qualification itself failed.
+            # Any resulting transport error is secondary to the real failure.
+            try:
+                await ws.close()
+            except Exception:
+                pass
 
 
 def main() -> int:
