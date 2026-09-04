@@ -55,21 +55,44 @@ That example is unencrypted. Do not expose an unencrypted relay over an untruste
 
 The browser, not this container, connects to the relay. Therefore publishing port `9001` on the Glowing Bear container itself is neither necessary nor useful.
 
+## Upstream pin
+
+Release builds are intentionally pinned to an exact Glowing Bear source revision rather than the moving `master` branch.
+
+Current pin for the first container release:
+
+- Glowing Bear version: `0.10.0`
+- Upstream revision: `b53e42f584bd8165287cee5f680e23ffa05198b7`
+- Upstream commit date: 2026-08-06
+
+The build verifies that the pinned source still reports the expected upstream version before installing dependencies.
+
 ## Build
 
-The Dockerfile clones upstream Glowing Bear during the build and accepts an upstream ref as a build argument:
+The defaults are reproducible for the current release candidate:
+
+```bash
+docker build -t glowing-bear:local .
+```
+
+A deliberate upstream override remains possible for development/testing:
 
 ```bash
 docker build \
-  --build-arg GLOWING_BEAR_REF=master \
+  --build-arg GLOWING_BEAR_VERSION=0.10.0 \
+  --build-arg GLOWING_BEAR_REF=b53e42f584bd8165287cee5f680e23ffa05198b7 \
   -t glowing-bear:local .
 ```
 
-For release builds, use a known upstream tag or commit as `GLOWING_BEAR_REF` so the source is reproducible and auditable.
+Do not publish a release from a floating branch name. Update the version and revision together, qualify the resulting image, and only then create a release tag.
 
 ## CI / GHCR
 
 GitHub Actions builds `linux/amd64` and `linux/arm64` with Buildx and publishes to GHCR on pushes to `main` and version tags. The workflow also requests provenance and SBOM attestations.
+
+Version tags publish the full semantic version, major/minor alias, major alias, and `latest`; for example `v0.1.0` publishes `0.1.0`, `0.1`, `0`, and `latest`.
+
+The runtime qualification gate pulls the published image and verifies hardened startup with a read-only root filesystem, dropped capabilities, `no-new-privileges`, the `/healthz` endpoint, the Glowing Bear front page, and non-root execution.
 
 ## Upstream and licensing
 
