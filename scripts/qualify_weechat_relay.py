@@ -19,7 +19,9 @@ async def qualify(url: str, password: str) -> None:
         if b"handshake" not in handshake or b"plain" not in handshake:
             raise RuntimeError("WeeChat handshake response did not negotiate plain authentication")
 
-        await ws.send(f"(init) init password=plain:{password}\n")
+        # Classic WeeChat relay protocol expects the raw password value here.
+        # The `plain:<password>` form belongs to the newer Relay HTTP API.
+        await ws.send(f"(init) init password={password}\n")
         await ws.send("(version) info version\n")
         version = await asyncio.wait_for(ws.recv(), timeout=10)
         if not isinstance(version, bytes):
