@@ -13,6 +13,10 @@ permissions:
   contents: read
   packages: write
 
+env:
+  UPSTREAM_VERSION: '0.10.0'
+  UPSTREAM_REVISION: 'b53e42f584bd8165287cee5f680e23ffa05198b7'
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -44,6 +48,7 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
@@ -54,6 +59,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GLOWING_BEAR_VERSION=${{ env.UPSTREAM_VERSION }}
+            GLOWING_BEAR_REF=${{ env.UPSTREAM_REVISION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: mode=max
@@ -116,6 +124,11 @@ jobs:
 
           health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' glowing-bear-smoke)"
           test "$health" != "unhealthy"
+
+          version="$(docker inspect --format '{{index .Config.Labels "io.github.ploos-as.upstream.version"}}' glowing-bear-smoke)"
+          revision="$(docker inspect --format '{{index .Config.Labels "io.github.ploos-as.upstream.revision"}}' glowing-bear-smoke)"
+          test "$version" = "${UPSTREAM_VERSION}"
+          test "$revision" = "${UPSTREAM_REVISION}"
 
       - name: Show container diagnostics
         if: always()
