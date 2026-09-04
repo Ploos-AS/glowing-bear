@@ -1,0 +1,8 @@
+{$SITE_ADDRESS:chat.example.com} {
+    encode zstd gzip
+
+    @weechat path /weechat*
+    reverse_proxy @weechat {$WEECHAT_RELAY_UPSTREAM:host.docker.internal:9001}
+
+    reverse_proxy glowing-bear:8080
+}
