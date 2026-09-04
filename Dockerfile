@@ -3,7 +3,7 @@
 ARG NODE_IMAGE=node:22-alpine
 ARG NGINX_IMAGE=nginx:1.27-alpine
 
-FROM ${NODE_IMAGE} AS build
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS build
 ARG GLOWING_BEAR_REF=master
 RUN apk add --no-cache git
 WORKDIR /src
