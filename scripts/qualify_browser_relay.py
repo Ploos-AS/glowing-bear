@@ -8,12 +8,20 @@ import sys
 from playwright.async_api import async_playwright
 
 
-async def qualify(base_url: str, relay_host: str, relay_port: int, password: str) -> None:
+async def qualify(
+    base_url: str,
+    relay_host: str,
+    relay_port: int,
+    password: str,
+    tls_enabled: bool,
+    ignore_https_errors: bool,
+) -> None:
     websocket_urls: list[str] = []
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
-        page = await browser.new_page()
+        context = await browser.new_context(ignore_https_errors=ignore_https_errors)
+        page = await context.new_page()
 
         page.on("websocket", lambda ws: websocket_urls.append(ws.url))
 
@@ -24,12 +32,15 @@ async def qualify(base_url: str, relay_host: str, relay_port: int, password: str
             await page.locator("#password").fill(password)
 
             tls = page.locator("#tls")
-            if await tls.is_checked():
+            if tls_enabled and not await tls.is_checked():
+                await tls.check()
+            elif not tls_enabled and await tls.is_checked():
                 await tls.uncheck()
 
             await page.locator('button[ng-click="connect()"]:visible').click()
 
-            expected_ws = f"ws://{relay_host}:{relay_port}/weechat"
+            websocket_scheme = "wss" if tls_enabled else "ws"
+            expected_ws = f"{websocket_scheme}://{relay_host}:{relay_port}/weechat"
             for _ in range(100):
                 if expected_ws in websocket_urls:
                     break
@@ -48,6 +59,7 @@ async def qualify(base_url: str, relay_host: str, relay_port: int, password: str
                 texts = await page.locator(".alert.alert-danger:visible").all_inner_texts()
                 raise RuntimeError(f"Glowing Bear displayed an error after connecting: {texts!r}")
         finally:
+            await context.close()
             await browser.close()
 
 
@@ -57,6 +69,8 @@ def main() -> int:
     parser.add_argument("--relay-host", default="127.0.0.1")
     parser.add_argument("--relay-port", type=int, default=19001)
     parser.add_argument("--password", required=True)
+    parser.add_argument("--tls", action="store_true")
+    parser.add_argument("--ignore-https-errors", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -66,15 +80,18 @@ def main() -> int:
                 args.relay_host,
                 args.relay_port,
                 args.password,
+                args.tls,
+                args.ignore_https_errors,
             )
         )
     except Exception as exc:
         print(f"browser relay qualification failed: {exc}", file=sys.stderr)
         return 1
 
+    websocket_scheme = "wss" if args.tls else "ws"
     print(
         "browser relay qualification passed: "
-        f"{args.base_url} -> ws://{args.relay_host}:{args.relay_port}/weechat"
+        f"{args.base_url} -> {websocket_scheme}://{args.relay_host}:{args.relay_port}/weechat"
     )
     return 0
 
