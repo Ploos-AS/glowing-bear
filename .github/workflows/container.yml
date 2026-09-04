@@ -13,6 +13,10 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: container-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   UPSTREAM_VERSION: '0.10.0'
   UPSTREAM_REVISION: 'b53e42f584bd8165287cee5f680e23ffa05198b7'
