@@ -63,6 +63,12 @@ This complements the container smoke test: the smoke test proves that the harden
 
 The test relay is bound only for the lifetime of the GitHub Actions runner and is not a deployment example. Production remote relays should use TLS.
 
+### M0.3 browser relay qualification
+
+CI also launches the built Glowing Bear container in hardened mode, starts a real password-protected WeeChat relay, and drives the Glowing Bear connection form in headless Chromium with Playwright. The gate requires the browser to open `ws://127.0.0.1:19001/weechat`, complete authentication through Glowing Bear itself, and enter Glowing Bear's connected UI state without displaying a connection error.
+
+M0.3 therefore covers the browser JavaScript path that M0.2 intentionally does not: static container -> real browser -> Glowing Bear connection code -> real WeeChat WebSocket relay.
+
 ## Upstream pin
 
 Release builds are intentionally pinned to an exact Glowing Bear source revision rather than the moving `master` branch.
