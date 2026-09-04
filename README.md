@@ -69,6 +69,30 @@ CI also launches the built Glowing Bear container in hardened mode, starts a rea
 
 M0.3 therefore covers the browser JavaScript path that M0.2 intentionally does not: static container -> real browser -> Glowing Bear connection code -> real WeeChat WebSocket relay.
 
+### M0.4 TLS reverse proxy deployments
+
+Production-oriented reference deployments are provided under `deploy/caddy/` and `deploy/nginx/`. Both expose Glowing Bear and the WeeChat WebSocket relay on the same public origin, with `/weechat` forwarded to the relay and all other requests forwarded to the Glowing Bear container.
+
+The Caddy example is the recommended starting point because it can obtain and renew public TLS certificates automatically. Set `SITE_ADDRESS` to the public hostname and `WEECHAT_RELAY_UPSTREAM` to the WeeChat relay address, then run:
+
+```bash
+cd deploy/caddy
+SITE_ADDRESS=chat.example.com \
+WEECHAT_RELAY_UPSTREAM=host.docker.internal:9001 \
+docker compose up -d
+```
+
+The nginx example expects an existing certificate and private key at `deploy/nginx/certs/fullchain.pem` and `deploy/nginx/certs/privkey.pem`:
+
+```bash
+cd deploy/nginx
+docker compose up -d
+```
+
+With either deployment, configure Glowing Bear to use the public hostname, port `443`, path `weechat`, and encryption enabled. The browser then connects to `wss://chat.example.com/weechat`; the raw WeeChat relay port does not need to be exposed publicly.
+
+CI syntax-validates both Compose files, validates the Caddyfile with Caddy itself, and runs `nginx -t` against the nginx configuration with an ephemeral test certificate.
+
 ## Upstream pin
 
 Release builds are intentionally pinned to an exact Glowing Bear source revision rather than the moving `master` branch.
