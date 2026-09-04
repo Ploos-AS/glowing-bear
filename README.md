@@ -101,6 +101,14 @@ CI runs `scripts/qualify_build_inputs.py` on every pull request and push to `mai
 
 This makes upstream updates deliberate and reviewable: change `upstream.env`, update the corresponding Dockerfile/CI values together, then let the existing multi-architecture, relay, browser, runtime, SBOM and provenance gates qualify the new build.
 
+### M0.6 TLS/WSS end-to-end qualification
+
+CI now exercises the production-style encrypted path, not only proxy syntax. It builds the Glowing Bear image, starts the hardened container behind the repository's Caddy reference configuration, starts a real password-protected WeeChat relay, and opens Glowing Bear over local HTTPS in headless Chromium.
+
+The browser is required to request `wss://localhost:18443/weechat`, complete Glowing Bear authentication through Caddy's TLS-terminating WebSocket reverse proxy, enter the connected UI state, and avoid displaying a connection error. Caddy uses its local development CA for the isolated CI endpoint; Playwright is configured to accept that CI-only certificate.
+
+M0.6 therefore qualifies the complete path represented by the recommended deployment reference: browser -> HTTPS Glowing Bear -> WSS -> Caddy -> private WeeChat relay.
+
 ## Upstream pin
 
 Release builds are intentionally pinned to an exact Glowing Bear source revision rather than the moving `master` branch.
