@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
-ARG NODE_IMAGE=node:22-alpine
-ARG NGINX_IMAGE=nginx:1.27-alpine
+ARG NODE_IMAGE=node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
+ARG NGINX_IMAGE=nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
 
 FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS build
 ARG GLOWING_BEAR_VERSION=0.10.0
