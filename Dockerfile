@@ -19,11 +19,10 @@ LABEL org.opencontainers.image.title="Glowing Bear" \
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /src/build/ /usr/share/nginx/html/
 
-RUN mkdir -p /tmp/nginx/client_temp /tmp/nginx/proxy_temp /tmp/nginx/fastcgi_temp /tmp/nginx/uwsgi_temp /tmp/nginx/scgi_temp \
-    && chown -R nginx:nginx /tmp/nginx /usr/share/nginx/html
+RUN chown -R nginx:nginx /usr/share/nginx/html
 
 USER nginx
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["sh", "-c", "mkdir -p /tmp/nginx/client_temp /tmp/nginx/proxy_temp /tmp/nginx/fastcgi_temp /tmp/nginx/uwsgi_temp /tmp/nginx/scgi_temp && exec nginx -g 'daemon off;'"]
