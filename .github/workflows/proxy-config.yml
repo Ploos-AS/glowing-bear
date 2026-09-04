@@ -1,0 +1,20 @@
+name: Proxy config
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proxy-config-qualification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Qualify reverse proxy configurations
+        run: bash scripts/qualify_proxy_configs.sh
