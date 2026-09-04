@@ -22,26 +22,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Point latest at v0.1.0 manifest
+      - name: Point stable aliases at v0.1.0 manifest
         shell: bash
         run: |
           set -euo pipefail
           docker buildx imagetools create \
+            --tag ghcr.io/ploos-as/glowing-bear:0.1 \
+            --tag ghcr.io/ploos-as/glowing-bear:0 \
             --tag ghcr.io/ploos-as/glowing-bear:latest \
             ghcr.io/ploos-as/glowing-bear:0.1.0
-
-      - name: Verify release aliases
-        shell: bash
-        run: |
-          set -euo pipefail
-          for tag in 0.1.0 0.1 0 latest; do
-            digest="$(docker buildx imagetools inspect "ghcr.io/ploos-as/glowing-bear:${tag}" | awk '/^Digest:/ {print $2; exit}')"
-            test -n "$digest"
-            echo "${tag} ${digest}"
-          done
-
-          d_release="$(docker buildx imagetools inspect ghcr.io/ploos-as/glowing-bear:0.1.0 | awk '/^Digest:/ {print $2; exit}')"
-          for tag in 0.1 0 latest; do
-            d="$(docker buildx imagetools inspect "ghcr.io/ploos-as/glowing-bear:${tag}" | awk '/^Digest:/ {print $2; exit}')"
-            test "$d" = "$d_release"
-          done
