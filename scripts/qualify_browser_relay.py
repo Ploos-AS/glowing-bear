@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Qualify Glowing Bear in a real browser against a WeeChat websocket relay."""
+
+import argparse
+import asyncio
+import sys
+
+from playwright.async_api import async_playwright
+
+
+async def qualify(base_url: str, relay_host: str, relay_port: int, password: str) -> None:
+    websocket_urls: list[str] = []
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(headless=True)
+        page = await browser.new_page()
+
+        page.on("websocket", lambda ws: websocket_urls.append(ws.url))
+
+        try:
+            await page.goto(base_url, wait_until="networkidle", timeout=30_000)
+            await page.locator("#host").fill(relay_host)
+            await page.locator("#port").fill(str(relay_port))
+            await page.locator("#password").fill(password)
+
+            tls = page.locator("#tls")
+            if await tls.is_checked():
+                await tls.uncheck()
+
+            await page.locator("button.btn-primary").click()
+
+            expected_ws = f"ws://{relay_host}:{relay_port}/weechat"
+            for _ in range(100):
+                if expected_ws in websocket_urls:
+                    break
+                await asyncio.sleep(0.1)
+            else:
+                raise RuntimeError(
+                    f"Glowing Bear did not open expected websocket {expected_ws}; saw {websocket_urls!r}"
+                )
+
+            await page.wait_for_function(
+                "document.body.classList.contains('no-overflow')",
+                timeout=15_000,
+            )
+
+            if await page.locator(".alert.alert-danger:visible").count():
+                texts = await page.locator(".alert.alert-danger:visible").all_inner_texts()
+                raise RuntimeError(f"Glowing Bear displayed an error after connecting: {texts!r}")
+        finally:
+            await browser.close()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-url", default="http://127.0.0.1:18080/")
+    parser.add_argument("--relay-host", default="127.0.0.1")
+    parser.add_argument("--relay-port", type=int, default=19001)
+    parser.add_argument("--password", required=True)
+    args = parser.parse_args()
+
+    try:
+        asyncio.run(
+            qualify(
+                args.base_url,
+                args.relay_host,
+                args.relay_port,
+                args.password,
+            )
+        )
+    except Exception as exc:
+        print(f"browser relay qualification failed: {exc}", file=sys.stderr)
+        return 1
+
+    print(
+        "browser relay qualification passed: "
+        f"{args.base_url} -> ws://{args.relay_host}:{args.relay_port}/weechat"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
