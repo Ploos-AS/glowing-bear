@@ -93,6 +93,14 @@ With either deployment, configure Glowing Bear to use the public hostname, port 
 
 CI syntax-validates both Compose files, validates the Caddyfile with Caddy itself, and runs `nginx -t` against the nginx configuration with an ephemeral test certificate.
 
+### M0.5 reproducible build inputs
+
+`upstream.env` is the canonical inventory of release build inputs: the expected Glowing Bear version, the exact upstream source commit, and the Node/nginx base-image references used by the Dockerfile.
+
+CI runs `scripts/qualify_build_inputs.py` on every pull request and push to `main`. The gate fails if the Dockerfile or container workflow drifts from the canonical upstream version/revision, if the base-image defaults drift from the inventory, or if the Glowing Bear source reference stops being a full 40-character commit SHA.
+
+This makes upstream updates deliberate and reviewable: change `upstream.env`, update the corresponding Dockerfile/CI values together, then let the existing multi-architecture, relay, browser, runtime, SBOM and provenance gates qualify the new build.
+
 ## Upstream pin
 
 Release builds are intentionally pinned to an exact Glowing Bear source revision rather than the moving `master` branch.
