@@ -25,7 +25,11 @@ async def qualify(url: str, password: str) -> None:
         if b"version" not in version:
             raise RuntimeError("WeeChat relay did not return the requested version info")
 
-        await ws.send("quit\n")
+        # Do not send WeeChat's relay-level `quit` command here. It closes the
+        # underlying TCP connection immediately, without a WebSocket close
+        # frame, which makes a successful protocol qualification look like a
+        # transport failure in strict WebSocket clients. Exiting the context
+        # manager performs the normal WebSocket close handshake instead.
 
 
 def main() -> int:
