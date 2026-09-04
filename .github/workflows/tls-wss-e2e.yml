@@ -1,0 +1,117 @@
+name: TLS WSS E2E
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tls-wss-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install qualification dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            weechat-headless \
+            weechat-plugins \
+            python3-pip \
+            netcat-openbsd
+          python3 -m pip install --break-system-packages -r requirements-browser-qualification.txt
+          python3 -m playwright install --with-deps chromium
+
+      - name: Configure and start ephemeral WeeChat relay
+        shell: bash
+        env:
+          RELAY_PASSWORD: m06-ci-relay-password
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/weechat-m06"
+          weechat-headless --dir "$RUNNER_TEMP/weechat-m06" \
+            --run-command "/set relay.network.password $RELAY_PASSWORD" \
+            --run-command "/relay add weechat 19001" \
+            --run-command "/save" \
+            --run-command "/quit"
+          weechat-headless --dir "$RUNNER_TEMP/weechat-m06" --daemon
+          for _ in {1..30}; do
+            if nc -z 127.0.0.1 19001; then exit 0; fi
+            sleep 1
+          done
+          echo "WeeChat relay did not open port 19001" >&2
+          exit 1
+
+      - name: Build Glowing Bear image
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source upstream.env
+          set +a
+          docker build \
+            --build-arg GLOWING_BEAR_VERSION="$GLOWING_BEAR_VERSION" \
+            --build-arg GLOWING_BEAR_REF="$GLOWING_BEAR_REF" \
+            --build-arg NODE_IMAGE="$NODE_IMAGE" \
+            --build-arg NGINX_IMAGE="$NGINX_IMAGE" \
+            -t glowing-bear:m06 .
+
+      - name: Start hardened Glowing Bear and Caddy TLS proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker network create glowing-bear-m06
+          docker run -d --name glowing-bear --network glowing-bear-m06 \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            glowing-bear:m06
+
+          docker run -d --name glowing-bear-caddy --network glowing-bear-m06 \
+            --add-host host.docker.internal:host-gateway \
+            -e SITE_ADDRESS=localhost \
+            -e WEECHAT_RELAY_UPSTREAM=host.docker.internal:19001 \
+            -p 127.0.0.1:18443:443 \
+            -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.10-alpine
+
+          for _ in {1..30}; do
+            if curl --fail --silent --insecure https://localhost:18443/healthz >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "TLS reverse proxy did not become ready" >&2
+          exit 1
+
+      - name: Qualify browser through HTTPS and WSS
+        env:
+          RELAY_PASSWORD: m06-ci-relay-password
+        run: |
+          python3 scripts/qualify_browser_relay.py \
+            --base-url https://localhost:18443/ \
+            --relay-host localhost \
+            --relay-port 18443 \
+            --password "$RELAY_PASSWORD" \
+            --tls \
+            --ignore-https-errors
+
+      - name: Show M0.6 diagnostics
+        if: always()
+        run: |
+          docker ps -a --filter name=glowing-bear || true
+          docker logs glowing-bear || true
+          docker logs glowing-bear-caddy || true
+          ps aux | grep '[w]eechat' || true
+
+      - name: Cleanup M0.6
+        if: always()
+        run: |
+          docker rm -f glowing-bear-caddy glowing-bear || true
+          docker network rm glowing-bear-m06 || true
+          pkill -f weechat-headless || true
