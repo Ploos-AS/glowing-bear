@@ -27,6 +27,11 @@ def require(pattern: str, text: str, expected: str, label: str) -> None:
         raise SystemExit(f"{label}: expected {expected!r}, got {actual!r}")
 
 
+def require_digest_pinned(value: str, label: str) -> None:
+    if not re.fullmatch(r"[^@\s]+@sha256:[0-9a-f]{64}", value):
+        raise SystemExit(f"{label} must be pinned to a sha256 image-index digest")
+
+
 def main() -> None:
     canonical = parse_env(ROOT / "upstream.env")
     dockerfile = (ROOT / "Dockerfile").read_text()
@@ -34,6 +39,8 @@ def main() -> None:
 
     require(r"^ARG NODE_IMAGE=([^\s]+)$", dockerfile, canonical["NODE_IMAGE"], "Dockerfile NODE_IMAGE")
     require(r"^ARG NGINX_IMAGE=([^\s]+)$", dockerfile, canonical["NGINX_IMAGE"], "Dockerfile NGINX_IMAGE")
+    require_digest_pinned(canonical["NODE_IMAGE"], "NODE_IMAGE")
+    require_digest_pinned(canonical["NGINX_IMAGE"], "NGINX_IMAGE")
 
     versions = re.findall(r"^ARG GLOWING_BEAR_VERSION=([^\s]+)$", dockerfile, re.MULTILINE)
     revisions = re.findall(r"^ARG GLOWING_BEAR_REF=([^\s]+)$", dockerfile, re.MULTILINE)
@@ -49,7 +56,7 @@ def main() -> None:
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise SystemExit("GLOWING_BEAR_REF must be a full 40-character lowercase commit SHA")
 
-    print("M0.5 build inputs are internally consistent and upstream is commit-pinned")
+    print("M0.7 build inputs are internally consistent; upstream and base images are digest-pinned")
 
 
 if __name__ == "__main__":
