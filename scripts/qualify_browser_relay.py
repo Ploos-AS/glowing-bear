@@ -27,7 +27,7 @@ async def qualify(base_url: str, relay_host: str, relay_port: int, password: str
             if await tls.is_checked():
                 await tls.uncheck()
 
-            await page.locator("button.btn-primary").click()
+            await page.locator('button[ng-click="connect()"]:visible').click()
 
             expected_ws = f"ws://{relay_host}:{relay_port}/weechat"
             for _ in range(100):
