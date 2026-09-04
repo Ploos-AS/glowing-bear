@@ -110,6 +110,77 @@ jobs:
         if: always()
         run: pkill -f weechat-headless || true
 
+  browser-relay-qualification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install browser relay qualification dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            weechat-headless \
+            weechat-plugins \
+            python3-pip \
+            netcat-openbsd
+          python3 -m pip install --break-system-packages -r requirements-browser-qualification.txt
+          python3 -m playwright install --with-deps chromium
+      - name: Configure and start ephemeral WeeChat websocket relay
+        shell: bash
+        env:
+          RELAY_PASSWORD: m03-ci-relay-password
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/weechat-browser"
+          weechat-headless --dir "$RUNNER_TEMP/weechat-browser" \
+            --run-command "/set relay.network.password $RELAY_PASSWORD" \
+            --run-command "/relay add weechat 19001" \
+            --run-command "/save" \
+            --run-command "/quit"
+          weechat-headless --dir "$RUNNER_TEMP/weechat-browser" --daemon
+          for _ in {1..30}; do
+            if nc -z 127.0.0.1 19001; then exit 0; fi
+            sleep 1
+          done
+          echo "WeeChat relay did not open port 19001" >&2
+          exit 1
+      - name: Build and start Glowing Bear container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg GLOWING_BEAR_VERSION="$UPSTREAM_VERSION" \
+            --build-arg GLOWING_BEAR_REF="$UPSTREAM_REVISION" \
+            -t glowing-bear:m03 .
+          docker run -d --name glowing-bear-browser \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            -p 127.0.0.1:18080:8080 \
+            glowing-bear:m03
+          for _ in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:18080/healthz >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Glowing Bear container did not become ready" >&2
+          exit 1
+      - name: Qualify Glowing Bear browser to WeeChat relay
+        env:
+          RELAY_PASSWORD: m03-ci-relay-password
+        run: python3 scripts/qualify_browser_relay.py --password "$RELAY_PASSWORD"
+      - name: Show M0.3 diagnostics
+        if: always()
+        run: |
+          docker ps -a --filter name=glowing-bear-browser || true
+          docker logs glowing-bear-browser || true
+          ps aux | grep '[w]eechat' || true
+      - name: Cleanup M0.3
+        if: always()
+        run: |
+          docker rm -f glowing-bear-browser || true
+          pkill -f weechat-headless || true
+
   runtime-qualification:
     if: github.event_name != 'pull_request'
     needs: build
