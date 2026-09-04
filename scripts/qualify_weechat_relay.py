@@ -6,10 +6,12 @@ import asyncio
 import sys
 
 import websockets
+from websockets.exceptions import ConnectionClosedError
 
 
 async def qualify(url: str, password: str) -> None:
-    async with websockets.connect(url, open_timeout=10, close_timeout=5) as ws:
+    ws = await websockets.connect(url, open_timeout=10, close_timeout=1)
+    try:
         await ws.send("(handshake) handshake password_hash_algo=plain,compression=off\n")
         handshake = await asyncio.wait_for(ws.recv(), timeout=10)
         if not isinstance(handshake, bytes):
@@ -24,12 +26,14 @@ async def qualify(url: str, password: str) -> None:
             raise RuntimeError("WeeChat version response was not binary")
         if b"version" not in version:
             raise RuntimeError("WeeChat relay did not return the requested version info")
-
-        # Do not send WeeChat's relay-level `quit` command here. It closes the
-        # underlying TCP connection immediately, without a WebSocket close
-        # frame, which makes a successful protocol qualification look like a
-        # transport failure in strict WebSocket clients. Exiting the context
-        # manager performs the normal WebSocket close handshake instead.
+    finally:
+        # WeeChat 4.1.x may drop the underlying TCP connection without sending
+        # a WebSocket close frame. That is a transport shutdown quirk, not a
+        # qualification failure once handshake/auth/version have succeeded.
+        try:
+            await ws.close()
+        except ConnectionClosedError:
+            pass
 
 
 def main() -> int:
