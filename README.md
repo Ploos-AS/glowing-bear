@@ -55,6 +55,14 @@ That example is unencrypted. Do not expose an unencrypted relay over an untruste
 
 The browser, not this container, connects to the relay. Therefore publishing port `9001` on the Glowing Bear container itself is neither necessary nor useful.
 
+### M0.2 relay qualification
+
+CI starts an ephemeral WeeChat instance with a password-protected WebSocket relay and exercises the same `/weechat` transport and relay protocol expected by the pinned Glowing Bear client. The qualification performs the WeeChat handshake, authenticates using the negotiated plain-password method on the isolated CI loopback relay, requests WeeChat version information, and requires a valid binary relay response.
+
+This complements the container smoke test: the smoke test proves that the hardened static web container runs correctly, while M0.2 proves that a real WeeChat WebSocket relay is reachable and speaks the protocol Glowing Bear expects.
+
+The test relay is bound only for the lifetime of the GitHub Actions runner and is not a deployment example. Production remote relays should use TLS.
+
 ## Upstream pin
 
 Release builds are intentionally pinned to an exact Glowing Bear source revision rather than the moving `master` branch.
@@ -92,7 +100,7 @@ GitHub Actions builds `linux/amd64` and `linux/arm64` with Buildx and publishes 
 
 Version tags publish the full semantic version, major/minor alias, major alias, and `latest`; for example `v0.1.0` publishes `0.1.0`, `0.1`, `0`, and `latest`.
 
-The runtime qualification gate pulls the published image and verifies hardened startup with a read-only root filesystem, dropped capabilities, `no-new-privileges`, the `/healthz` endpoint, the Glowing Bear front page, and non-root execution.
+The runtime qualification gate pulls the published image and verifies hardened startup with a read-only root filesystem, dropped capabilities, `no-new-privileges`, the `/healthz` endpoint, the Glowing Bear front page, non-root execution, and a real WeeChat WebSocket relay protocol exchange.
 
 ## Upstream and licensing
 
