@@ -6,11 +6,11 @@ import asyncio
 import sys
 
 import websockets
-from websockets.exceptions import ConnectionClosedError
 
 
 async def qualify(url: str, password: str) -> None:
     ws = await websockets.connect(url, open_timeout=10, close_timeout=1)
+    qualified = False
     try:
         await ws.send("(handshake) handshake password_hash_algo=plain,compression=off\n")
         handshake = await asyncio.wait_for(ws.recv(), timeout=10)
@@ -26,14 +26,22 @@ async def qualify(url: str, password: str) -> None:
             raise RuntimeError("WeeChat version response was not binary")
         if b"version" not in version:
             raise RuntimeError("WeeChat relay did not return the requested version info")
+
+        qualified = True
     finally:
-        # WeeChat 4.1.x may drop the underlying TCP connection without sending
-        # a WebSocket close frame. That is a transport shutdown quirk, not a
-        # qualification failure once handshake/auth/version have succeeded.
-        try:
-            await ws.close()
-        except ConnectionClosedError:
-            pass
+        if qualified:
+            # WeeChat 4.1.x may not complete the RFC 6455 close handshake.
+            # Once handshake/auth/version are proven, terminate the transport
+            # directly so that this server shutdown quirk can't turn a valid
+            # qualification into a false negative.
+            ws.transport.abort()
+        else:
+            # Preserve normal close behavior when qualification itself failed.
+            # Any resulting transport error is secondary to the real failure.
+            try:
+                await ws.close()
+            except Exception:
+                pass
 
 
 def main() -> int:
