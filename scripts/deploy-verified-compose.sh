@@ -4,7 +4,7 @@ set -euo pipefail
 VERSION="${VERSION:?VERSION is required}"
 COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml}"
 
-for command in docker cosign; do
+for command in docker skopeo cosign; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "required command not found: $command" >&2
     exit 1
@@ -17,7 +17,7 @@ if [[ ! "$verified_ref" =~ ^ghcr\.io/ploos-as/glowing-bear@sha256:[0-9a-f]{64}$ 
   exit 1
 fi
 
-echo "Pulling verified immutable image: $verified_ref"
+echo "Pulling verified immutable image with Docker: $verified_ref"
 docker pull "$verified_ref"
 
 export GLOWING_BEAR_IMAGE="$verified_ref"
