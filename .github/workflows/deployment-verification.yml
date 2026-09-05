@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Validate M0.11 script syntax
+      - name: Validate verification script syntax
         run: bash -n scripts/verify-release.sh
 
   verify-deployment-policy:
@@ -30,16 +30,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install Skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends skopeo
       - name: Install Cosign
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Select signed release
         id: release
         shell: bash
@@ -51,8 +47,9 @@ jobs:
             version="0.2.3"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Verify before pull
+      - name: Verify before Docker pull
         env:
           VERSION: ${{ steps.release.outputs.version }}
           PULL: '1'
+          RUNTIME: docker
         run: bash scripts/verify-release.sh
