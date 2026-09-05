@@ -109,6 +109,24 @@ The browser is required to request `wss://localhost:18443/weechat`, complete Glo
 
 M0.6 therefore qualifies the complete path represented by the recommended deployment reference: browser -> HTTPS Glowing Bear -> WSS -> Caddy -> private WeeChat relay.
 
+### M0.11 verified deployment
+
+Release signing is enforced on the consumer side with `scripts/verify-release.sh`. The script resolves a semantic-version tag to its immutable OCI digest, verifies the Sigstore/Cosign signature against the exact `sign-release.yml` GitHub Actions certificate identity and GitHub Actions OIDC issuer, and can then pull that immutable digest only after verification succeeds.
+
+Verify a release without pulling it:
+
+```bash
+VERSION=0.2.3 bash scripts/verify-release.sh
+```
+
+Verify and pull the immutable image only after successful verification:
+
+```bash
+VERSION=0.2.3 PULL=1 bash scripts/verify-release.sh
+```
+
+CI qualifies this deployment policy against the signed `v0.2.3` release. See `docs/M0_11_VERIFIED_DEPLOYMENT.md` for the trust policy and acceptance criteria.
+
 ## Upstream pin
 
 Release builds are intentionally pinned to an exact Glowing Bear source revision rather than the moving `master` branch.
