@@ -18,6 +18,11 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
   exit 1
 fi
 
+if [[ "$PULL" != "0" && "$PULL" != "1" ]]; then
+  echo "PULL must be 0 or 1" >&2
+  exit 1
+fi
+
 for command in docker cosign; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "required command not found: $command" >&2
@@ -36,24 +41,21 @@ fi
 
 signed_ref="$IMAGE@$image_digest"
 
-echo "Resolved release: $primary"
-echo "Immutable ref:   $signed_ref"
-echo "Expected signer: $identity"
-echo "Expected issuer: $OIDC_ISSUER"
+echo "Resolved release: $primary" >&2
+echo "Immutable ref:   $signed_ref" >&2
+echo "Expected signer: $identity" >&2
+echo "Expected issuer: $OIDC_ISSUER" >&2
 
 cosign verify \
   --certificate-identity "$identity" \
   --certificate-oidc-issuer "$OIDC_ISSUER" \
   "$signed_ref" >/dev/null
 
-echo "Signature verification passed for $signed_ref"
+echo "Signature verification passed for $signed_ref" >&2
 
 if [[ "$PULL" == "1" ]]; then
-  docker pull "$signed_ref"
-  echo "Pulled verified immutable image: $signed_ref"
-elif [[ "$PULL" != "0" ]]; then
-  echo "PULL must be 0 or 1" >&2
-  exit 1
+  docker pull "$signed_ref" >&2
+  echo "Pulled verified immutable image: $signed_ref" >&2
 fi
 
 printf '%s\n' "$signed_ref"
