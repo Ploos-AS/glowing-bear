@@ -1,0 +1,55 @@
+name: Release qualification
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: release-qualification-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/ploos-as/glowing-bear
+  UPSTREAM_VERSION: '0.10.0'
+  UPSTREAM_REVISION: 'b53e42f584bd8165287cee5f680e23ffa05198b7'
+
+jobs:
+  validate-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate release qualification script
+        run: bash -n scripts/qualify_release_image.sh
+
+  qualify-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: validate-script
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Qualify published release image
+        shell: bash
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          export VERSION="${VERSION#v}"
+          bash scripts/qualify_release_image.sh
