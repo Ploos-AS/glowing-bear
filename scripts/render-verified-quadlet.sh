@@ -12,7 +12,7 @@ for command in docker cosign; do
   fi
 done
 
-verified_ref="$(VERSION="$VERSION" PULL=0 bash scripts/verify-release.sh | tail -n1)"
+verified_ref="$(VERSION="$VERSION" PULL=0 bash scripts/verify-release.sh)"
 if [[ ! "$verified_ref" =~ ^ghcr\.io/ploos-as/glowing-bear@sha256:[0-9a-f]{64}$ ]]; then
   echo "verification did not return an immutable Glowing Bear image ref" >&2
   exit 1
