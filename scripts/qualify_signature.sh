@@ -19,12 +19,19 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
   exit 1
 fi
 
+for command in skopeo cosign; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    echo "required command not found: $command" >&2
+    exit 1
+  fi
+done
+
 primary="$IMAGE:$VERSION"
 identity="https://github.com/Ploos-AS/glowing-bear/.github/workflows/sign-release.yml@refs/tags/$TAG"
 
 image_digest=""
 for attempt in $(seq 1 "$WAIT_ATTEMPTS"); do
-  image_digest="$(docker buildx imagetools inspect "$primary" 2>/dev/null | awk '/^Digest:/ {print $2; exit}' || true)"
+  image_digest="$(skopeo inspect --no-tags --format '{{.Digest}}' "docker://$primary" 2>/dev/null || true)"
   if [[ "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
     echo "Found $primary at $image_digest (attempt $attempt/$WAIT_ATTEMPTS)"
     break

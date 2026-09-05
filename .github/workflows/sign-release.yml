@@ -19,8 +19,10 @@ jobs:
   sign-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install Skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends skopeo
       - name: Install Cosign
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
       - name: Log in to GHCR
@@ -38,7 +40,7 @@ jobs:
           ref="$IMAGE:$version"
           digest=""
           for attempt in $(seq 1 "$WAIT_ATTEMPTS"); do
-            digest="$(docker buildx imagetools inspect "$ref" 2>/dev/null | awk '/^Digest:/ {print $2; exit}' || true)"
+            digest="$(skopeo inspect --no-tags --format '{{.Digest}}' "docker://$ref" 2>/dev/null || true)"
             if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
               echo "Found $ref at $digest (attempt $attempt/$WAIT_ATTEMPTS)"
               break

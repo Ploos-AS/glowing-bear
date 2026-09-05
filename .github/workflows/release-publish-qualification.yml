@@ -1,0 +1,40 @@
+name: Release publish qualification
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  QUALIFICATION_VERSION: '0.2.3'
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends skopeo
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+      - name: Validate release scripts and workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/qualify_signature.sh
+          grep -q 'skopeo inspect --no-tags' .github/workflows/sign-release.yml
+          ! grep -q 'docker buildx imagetools inspect' .github/workflows/sign-release.yml
+          grep -q 'skopeo inspect --no-tags' scripts/qualify_signature.sh
+          ! grep -q 'docker buildx imagetools inspect' scripts/qualify_signature.sh
+      - name: Qualify existing signed release through current verification path
+        env:
+          VERSION: ${{ env.QUALIFICATION_VERSION }}
+          WAIT_ATTEMPTS: '12'
+          WAIT_SECONDS: '5'
+        run: bash scripts/qualify_signature.sh
