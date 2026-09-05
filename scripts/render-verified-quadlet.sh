@@ -5,7 +5,7 @@ VERSION="${VERSION:?VERSION is required}"
 OUTPUT="${OUTPUT:-glowing-bear.verified.container}"
 TEMPLATE="${TEMPLATE:-quadlet/glowing-bear.container}"
 
-for command in docker cosign; do
+for command in skopeo cosign; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "required command not found: $command" >&2
     exit 1
