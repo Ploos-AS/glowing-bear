@@ -1,6 +1,6 @@
 services:
   glowing-bear:
-    image: ghcr.io/ploos-as/glowing-bear:latest
+    image: ${GLOWING_BEAR_IMAGE:-ghcr.io/ploos-as/glowing-bear:latest}
     build:
       context: .
     container_name: glowing-bear
