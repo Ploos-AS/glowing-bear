@@ -3,6 +3,8 @@ set -euo pipefail
 
 IMAGE="${IMAGE:-ghcr.io/ploos-as/glowing-bear}"
 VERSION="${VERSION:?VERSION is required}"
+WAIT_ATTEMPTS="${WAIT_ATTEMPTS:-60}"
+WAIT_SECONDS="${WAIT_SECONDS:-5}"
 
 if [[ "$VERSION" == v* ]]; then
   VERSION="${VERSION#v}"
@@ -16,6 +18,26 @@ fi
 primary="$IMAGE:$VERSION"
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
+
+inspect_digest() {
+  docker buildx imagetools inspect "$1" 2>/dev/null | awk '/^Digest:/ {print $2; exit}'
+}
+
+primary_digest=""
+for attempt in $(seq 1 "$WAIT_ATTEMPTS"); do
+  primary_digest="$(inspect_digest "$primary" || true)"
+  if [[ -n "$primary_digest" ]]; then
+    echo "Found $primary at $primary_digest (attempt $attempt/$WAIT_ATTEMPTS)"
+    break
+  fi
+  echo "Waiting for $primary to be published (attempt $attempt/$WAIT_ATTEMPTS)"
+  sleep "$WAIT_SECONDS"
+done
+
+if [[ -z "$primary_digest" ]]; then
+  echo "timed out waiting for $primary" >&2
+  exit 1
+fi
 
 index_json="$workdir/index.json"
 docker buildx imagetools inspect --raw "$primary" > "$index_json"
@@ -107,4 +129,4 @@ while IFS=$'\t' read -r arch platform_digest; do
 done < "$platform_rows"
 
 echo "Qualified decoded SLSA provenance and SPDX SBOM payloads for $primary"
-echo "M0.9 attestation verification passed for $primary"
+echo "M0.9 attestation verification passed for $primary ($primary_digest)"
