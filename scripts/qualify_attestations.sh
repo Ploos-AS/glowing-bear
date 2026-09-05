@@ -35,7 +35,7 @@ done
 
 # BuildKit stores the subject linkage on the attestation descriptor in the OCI
 # index. The descriptor binds each attestation manifest to its exact platform
-# digest; Buildx exposes the decoded provenance/SBOM payloads from the parent
+# digest; Buildx exposes decoded provenance/SBOM payloads from the parent
 # multi-platform release reference.
 attestation_rows="$workdir/attestations.tsv"
 jq -r '.manifests[]
@@ -65,7 +65,6 @@ while IFS=$'\t' read -r arch platform_digest; do
       echo "attestation $attestation_digest does not contain at least two valid in-toto layers" >&2
       exit 1
     }
-
 done < "$platform_rows"
 
 provenance_json="$workdir/provenance.json"
@@ -78,15 +77,20 @@ docker buildx imagetools inspect \
   --format '{{ json .SBOM }}' \
   "$primary" > "$sbom_json"
 
-jq -e '
-  . != null and
-  ([.. | objects | .predicateType? // empty]
-    | any(. == "https://slsa.dev/provenance/v0.2" or startswith("https://slsa.dev/provenance/")))
-' "$provenance_json" >/dev/null || {
-  echo "$primary is missing readable SLSA provenance content" >&2
-  cat "$provenance_json" >&2 || true
-  exit 1
-}
+for arch in amd64 arm64; do
+  jq -e --arg platform "linux/$arch" '
+    .[$platform].SLSA
+    | type == "object"
+      and (.buildDefinition | type == "object")
+      and (.buildDefinition.buildType | type == "string" and length > 0)
+      and (.runDetails | type == "object")
+      and (.runDetails.builder.id | type == "string" and length > 0)
+  ' "$provenance_json" >/dev/null || {
+    echo "$primary is missing readable SLSA provenance content for linux/$arch" >&2
+    cat "$provenance_json" >&2 || true
+    exit 1
+  }
+done
 
 jq -e '
   . != null and
