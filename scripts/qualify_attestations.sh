@@ -20,23 +20,23 @@ trap 'rm -rf "$workdir"' EXIT
 index_json="$workdir/index.json"
 docker buildx imagetools inspect --raw "$primary" > "$index_json"
 
-platform_digests=()
-while IFS= read -r digest; do
-  [[ -n "$digest" ]] && platform_digests+=("$digest")
-done < <(
-  jq -r '.manifests[]
-    | select(.platform.os == "linux")
-    | select(.platform.architecture == "amd64" or .platform.architecture == "arm64")
-    | .digest' "$index_json"
-)
+platform_rows="$workdir/platforms.tsv"
+jq -r '.manifests[]
+  | select(.platform.os == "linux")
+  | select(.platform.architecture == "amd64" or .platform.architecture == "arm64")
+  | [.platform.architecture, .digest] | @tsv' "$index_json" > "$platform_rows"
 
-if [[ "${#platform_digests[@]}" -lt 2 ]]; then
-  echo "$primary does not expose both required Linux platform manifests" >&2
-  exit 1
-fi
+for arch in amd64 arm64; do
+  if ! awk -F '\t' -v a="$arch" '$1 == a {found=1} END {exit !found}' "$platform_rows"; then
+    echo "$primary is missing linux/$arch" >&2
+    exit 1
+  fi
+done
 
 # BuildKit stores the subject linkage on the attestation descriptor in the OCI
-# index, not inside the attestation manifest itself.
+# index. The attestation payload itself is exposed by Buildx through the
+# Provenance and SBOM formatter objects; predicate metadata is part of that
+# payload and is not required to be duplicated as a layer annotation.
 attestation_rows="$workdir/attestations.tsv"
 jq -r '.manifests[]
   | select(.platform.os == "unknown" and .platform.architecture == "unknown")
@@ -50,43 +50,52 @@ if [[ ! -s "$attestation_rows" ]]; then
   exit 1
 fi
 
-for platform_digest in "${platform_digests[@]}"; do
+while IFS=$'\t' read -r arch platform_digest; do
   attestation_digest="$(awk -F '\t' -v d="$platform_digest" '$2 == d {print $1; exit}' "$attestation_rows")"
   if [[ -z "$attestation_digest" ]]; then
-    echo "missing attestation manifest for platform digest $platform_digest" >&2
+    echo "missing attestation manifest for linux/$arch digest $platform_digest" >&2
     exit 1
   fi
 
-  manifest_json="$workdir/${attestation_digest#sha256:}.json"
+  manifest_json="$workdir/${attestation_digest#sha256:}.manifest.json"
   docker buildx imagetools inspect --raw "$IMAGE@$attestation_digest" > "$manifest_json"
 
-  jq -e '[.layers[] | select(.mediaType == "application/vnd.in-toto+json")] | length >= 2' \
+  jq -e '[.layers[] | select(.mediaType == "application/vnd.in-toto+json") | select(.size > 0) | .digest | select(test("^sha256:[0-9a-f]{64}$"))] | length >= 2' \
     "$manifest_json" >/dev/null || {
-      echo "attestation $attestation_digest does not contain the expected in-toto layers" >&2
+      echo "attestation $attestation_digest does not contain at least two valid in-toto layers" >&2
       exit 1
     }
 
-  jq -e '.layers[]
-    | select(.mediaType == "application/vnd.in-toto+json")
-    | select(.annotations["in-toto.io/predicate-type"] == "https://slsa.dev/provenance/v0.2")
-    | select(.size > 0)
-    | .digest | test("^sha256:[0-9a-f]{64}$")' \
-    "$manifest_json" >/dev/null || {
-      echo "attestation $attestation_digest is missing a valid SLSA provenance descriptor" >&2
-      exit 1
-    }
+  provenance_json="$workdir/${arch}.provenance.json"
+  sbom_json="$workdir/${arch}.sbom.json"
 
-  jq -e '.layers[]
-    | select(.mediaType == "application/vnd.in-toto+json")
-    | select(.annotations["in-toto.io/predicate-type"] == "https://spdx.dev/Document")
-    | select(.size > 0)
-    | .digest | test("^sha256:[0-9a-f]{64}$")' \
-    "$manifest_json" >/dev/null || {
-      echo "attestation $attestation_digest is missing a valid SPDX SBOM descriptor" >&2
-      exit 1
-    }
+  docker buildx imagetools inspect \
+    --format '{{ json .Provenance }}' \
+    "$IMAGE@$platform_digest" > "$provenance_json"
+  docker buildx imagetools inspect \
+    --format '{{ json .SBOM }}' \
+    "$IMAGE@$platform_digest" > "$sbom_json"
 
-  echo "Qualified SLSA provenance and SPDX SBOM for $platform_digest via $attestation_digest"
-done
+  jq -e '
+    . != null and
+    ([.. | objects | .predicateType? // empty]
+      | any(. == "https://slsa.dev/provenance/v0.2" or startswith("https://slsa.dev/provenance/")))
+  ' "$provenance_json" >/dev/null || {
+    echo "linux/$arch is missing readable SLSA provenance content" >&2
+    cat "$provenance_json" >&2 || true
+    exit 1
+  }
+
+  jq -e '
+    . != null and
+    ([.. | objects | .spdxVersion? // empty] | any(startswith("SPDX-")))
+  ' "$sbom_json" >/dev/null || {
+    echo "linux/$arch is missing readable SPDX SBOM content" >&2
+    cat "$sbom_json" >&2 || true
+    exit 1
+  }
+
+  echo "Qualified SLSA provenance and SPDX SBOM for linux/$arch $platform_digest via $attestation_digest"
+done < "$platform_rows"
 
 echo "M0.9 attestation verification passed for $primary"
