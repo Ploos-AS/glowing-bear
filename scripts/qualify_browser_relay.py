@@ -5,7 +5,19 @@ import argparse
 import asyncio
 import sys
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
+
+
+async def goto_with_network_retry(page, base_url: str) -> None:
+    for attempt in range(3):
+        try:
+            await page.goto(base_url, wait_until="networkidle", timeout=30_000)
+            return
+        except PlaywrightError as exc:
+            if "ERR_NETWORK_CHANGED" not in str(exc) or attempt == 2:
+                raise
+            await asyncio.sleep(1)
 
 
 async def qualify(
@@ -26,7 +38,7 @@ async def qualify(
         page.on("websocket", lambda ws: websocket_urls.append(ws.url))
 
         try:
-            await page.goto(base_url, wait_until="networkidle", timeout=30_000)
+            await goto_with_network_retry(page, base_url)
             await page.locator("#host").fill(relay_host)
             await page.locator("#port").fill(str(relay_port))
             await page.locator("#password").fill(password)
