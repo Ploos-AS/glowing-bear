@@ -4,6 +4,7 @@ set -euo pipefail
 IMAGE="${IMAGE:-ghcr.io/ploos-as/glowing-bear}"
 VERSION="${VERSION:?VERSION is required}"
 OIDC_ISSUER="${OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
+EXPECTED_IDENTITY="${EXPECTED_IDENTITY:-}"
 PULL="${PULL:-0}"
 RUNTIME="${RUNTIME:-auto}"
 
@@ -40,7 +41,8 @@ for command in skopeo cosign; do
 done
 
 primary="$IMAGE:$VERSION"
-identity="https://github.com/Ploos-AS/glowing-bear/.github/workflows/sign-release.yml@refs/tags/$TAG"
+default_identity="https://github.com/Ploos-AS/glowing-bear/.github/workflows/sign-release.yml@refs/tags/$TAG"
+identity="${EXPECTED_IDENTITY:-$default_identity}"
 
 image_digest="$(skopeo inspect --no-tags --format '{{.Digest}}' "docker://$primary")"
 if [[ ! "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
