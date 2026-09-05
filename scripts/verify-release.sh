@@ -33,7 +33,11 @@ done
 primary="$IMAGE:$VERSION"
 identity="https://github.com/Ploos-AS/glowing-bear/.github/workflows/sign-release.yml@refs/tags/$TAG"
 
-image_digest="$(docker buildx imagetools inspect "$primary" | awk '/^Digest:/ {print $2; exit}')"
+# Capture the complete Buildx output before parsing it. Piping imagetools inspect
+# directly into an awk program that exits after the Digest line can close the
+# pipe early; with pipefail enabled Buildx may then report SIGPIPE as exit 255.
+inspect_output="$(docker buildx imagetools inspect "$primary")"
+image_digest="$(awk '/^Digest:/ {print $2; found=1} END {if (!found) exit 1}' <<<"$inspect_output")"
 if [[ ! "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   echo "could not resolve an immutable sha256 digest for $primary" >&2
   exit 1
