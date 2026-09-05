@@ -34,9 +34,9 @@ for arch in amd64 arm64; do
 done
 
 # BuildKit stores the subject linkage on the attestation descriptor in the OCI
-# index. The attestation payload itself is exposed by Buildx through the
-# Provenance and SBOM formatter objects; predicate metadata is part of that
-# payload and is not required to be duplicated as a layer annotation.
+# index. The descriptor binds each attestation manifest to its exact platform
+# digest; Buildx exposes the decoded provenance/SBOM payloads from the parent
+# multi-platform release reference.
 attestation_rows="$workdir/attestations.tsv"
 jq -r '.manifests[]
   | select(.platform.os == "unknown" and .platform.architecture == "unknown")
@@ -66,36 +66,41 @@ while IFS=$'\t' read -r arch platform_digest; do
       exit 1
     }
 
-  provenance_json="$workdir/${arch}.provenance.json"
-  sbom_json="$workdir/${arch}.sbom.json"
-
-  docker buildx imagetools inspect \
-    --format '{{ json .Provenance }}' \
-    "$IMAGE@$platform_digest" > "$provenance_json"
-  docker buildx imagetools inspect \
-    --format '{{ json .SBOM }}' \
-    "$IMAGE@$platform_digest" > "$sbom_json"
-
-  jq -e '
-    . != null and
-    ([.. | objects | .predicateType? // empty]
-      | any(. == "https://slsa.dev/provenance/v0.2" or startswith("https://slsa.dev/provenance/")))
-  ' "$provenance_json" >/dev/null || {
-    echo "linux/$arch is missing readable SLSA provenance content" >&2
-    cat "$provenance_json" >&2 || true
-    exit 1
-  }
-
-  jq -e '
-    . != null and
-    ([.. | objects | .spdxVersion? // empty] | any(startswith("SPDX-")))
-  ' "$sbom_json" >/dev/null || {
-    echo "linux/$arch is missing readable SPDX SBOM content" >&2
-    cat "$sbom_json" >&2 || true
-    exit 1
-  }
-
-  echo "Qualified SLSA provenance and SPDX SBOM for linux/$arch $platform_digest via $attestation_digest"
 done < "$platform_rows"
 
+provenance_json="$workdir/provenance.json"
+sbom_json="$workdir/sbom.json"
+
+docker buildx imagetools inspect \
+  --format '{{ json .Provenance }}' \
+  "$primary" > "$provenance_json"
+docker buildx imagetools inspect \
+  --format '{{ json .SBOM }}' \
+  "$primary" > "$sbom_json"
+
+jq -e '
+  . != null and
+  ([.. | objects | .predicateType? // empty]
+    | any(. == "https://slsa.dev/provenance/v0.2" or startswith("https://slsa.dev/provenance/")))
+' "$provenance_json" >/dev/null || {
+  echo "$primary is missing readable SLSA provenance content" >&2
+  cat "$provenance_json" >&2 || true
+  exit 1
+}
+
+jq -e '
+  . != null and
+  ([.. | objects | .spdxVersion? // empty] | any(startswith("SPDX-")))
+' "$sbom_json" >/dev/null || {
+  echo "$primary is missing readable SPDX SBOM content" >&2
+  cat "$sbom_json" >&2 || true
+  exit 1
+}
+
+while IFS=$'\t' read -r arch platform_digest; do
+  attestation_digest="$(awk -F '\t' -v d="$platform_digest" '$2 == d {print $1; exit}' "$attestation_rows")"
+  echo "Qualified attestation linkage for linux/$arch $platform_digest via $attestation_digest"
+done < "$platform_rows"
+
+echo "Qualified decoded SLSA provenance and SPDX SBOM payloads for $primary"
 echo "M0.9 attestation verification passed for $primary"
