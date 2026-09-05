@@ -1,0 +1,66 @@
+name: Attestation verification
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing release version to verify (for example 0.2.1 or v0.2.1)
+        required: true
+        default: '0.2.1'
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: attestation-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/ploos-as/glowing-bear
+
+jobs:
+  validate-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate M0.9 script syntax
+        run: bash -n scripts/qualify_attestations.sh
+
+  verify-attestations:
+    needs: validate-script
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Select release version
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="0.2.1"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Verify published provenance and SBOM attestations
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: bash scripts/qualify_attestations.sh
